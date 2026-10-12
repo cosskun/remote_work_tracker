@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../models/work_model.dart';
 import '../theme.dart';
 import '../utils/excel_exporter.dart';
+import '../utils/holiday_helper.dart';
 
 class ReportsScreen extends StatefulWidget {
   final List<WorkLog> allLogs;
@@ -22,6 +23,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   late DateTime _startDate;
   late DateTime _endDate;
   bool _isExporting = false;
+  bool _autoIncludeOfficeWork = true;
 
   @override
   void initState() {
@@ -61,13 +63,64 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 
   List<WorkLog> get _filteredLogs {
-    final start = DateTime(_startDate.year, _startDate.month, _startDate.day);
-    final end = DateTime(_endDate.year, _endDate.month, _endDate.day, 23, 59, 59);
-    
-    return widget.allLogs.where((log) {
-      return log.date.isAfter(start.subtract(const Duration(seconds: 1))) &&
-             log.date.isBefore(end.add(const Duration(seconds: 1)));
-    }).toList()..sort((a, b) => b.date.compareTo(a.date)); // Sort newer first in UI list
+    final startOnly = DateTime(_startDate.year, _startDate.month, _startDate.day);
+    final endOnly = DateTime(_endDate.year, _endDate.month, _endDate.day, 23, 59, 59);
+    final bool isStartFriday = _startDate.weekday == DateTime.friday;
+
+    // Filter existing logs
+    final List<WorkLog> list = widget.allLogs.where((log) {
+      final logDateOnly = DateTime(log.date.year, log.date.month, log.date.day);
+      final bool inRange = log.date.isAfter(startOnly.subtract(const Duration(seconds: 1))) &&
+             log.date.isBefore(endOnly.add(const Duration(seconds: 1)));
+      if (!inRange) return false;
+
+      // Rule: If start date is a Friday, exclude any "OFİSTEN ÇALIŞMA" log on the start date itself
+      if (isStartFriday &&
+          log.title == 'OFİSTEN ÇALIŞMA' &&
+          logDateOnly.year == startOnly.year &&
+          logDateOnly.month == startOnly.month &&
+          logDateOnly.day == startOnly.day) {
+        return false;
+      }
+      return true;
+    }).toList();
+
+    // Auto-include official workdays with 8.5h office work if enabled
+    if (_autoIncludeOfficeWork) {
+      DateTime curDay = DateTime(_startDate.year, _startDate.month, _startDate.day);
+      final endDay = DateTime(_endDate.year, _endDate.month, _endDate.day);
+
+      while (!curDay.isAfter(endDay)) {
+        final bool isStartDayFriday = isStartFriday &&
+            curDay.year == startOnly.year &&
+            curDay.month == startOnly.month &&
+            curDay.day == startOnly.day;
+
+        if (!isStartDayFriday && HolidayHelper.isOfficialWorkday(curDay)) {
+          final bool exists = list.any((l) =>
+              l.title == 'OFİSTEN ÇALIŞMA' &&
+              l.date.year == curDay.year &&
+              l.date.month == curDay.month &&
+              l.date.day == curDay.day);
+
+          if (!exists) {
+            final double rate = curDay.isBefore(DateTime(2026, 1, 16)) ? 600.0 : widget.hourlyRate;
+            list.add(WorkLog(
+              id: 'auto_office_${curDay.year}_${curDay.month}_${curDay.day}',
+              title: 'OFİSTEN ÇALIŞMA',
+              date: curDay,
+              durationMinutes: 510,
+              category: 'Ofis',
+              hourlyRate: rate,
+            ));
+          }
+        }
+        curDay = curDay.add(const Duration(days: 1));
+      }
+    }
+
+    list.sort((a, b) => b.date.compareTo(a.date));
+    return list;
   }
 
   double get _totalHours {
@@ -99,6 +152,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         startDate: _startDate,
         endDate: _endDate,
         hourlyRate: widget.hourlyRate,
+        autoIncludeOfficeWork: _autoIncludeOfficeWork,
       );
 
       if (mounted) {
@@ -187,7 +241,39 @@ class _ReportsScreenState extends State<ReportsScreen> {
               ),
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
+
+          // Auto-include Office Work on Official Workdays Toggle
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            decoration: AppTheme.cardDecoration(hasShadow: false),
+            child: Row(
+              children: [
+                const Icon(Icons.business_center, color: AppColors.primary, size: 20),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text(
+                    'Resmi iş günlerine otomatik 8.5 sa ofis çalışması ekle',
+                    style: TextStyle(
+                      color: AppColors.textPrimary,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                Switch(
+                  value: _autoIncludeOfficeWork,
+                  activeColor: AppColors.primary,
+                  onChanged: (val) {
+                    setState(() {
+                      _autoIncludeOfficeWork = val;
+                    });
+                  },
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
 
           // Overview Statistics for the Range
           Row(

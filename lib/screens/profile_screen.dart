@@ -249,6 +249,69 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  Future<void> _autoPopulateWorkdays() async {
+    final currentLogs = await WorkStorage.getWorkLogs();
+    DateTime startDate = DateTime(2025, 12, 1);
+    if (currentLogs.isNotEmpty) {
+      final earliest = currentLogs.map((l) => l.date).reduce((a, b) => a.isBefore(b) ? a : b);
+      if (earliest.isBefore(startDate)) {
+        startDate = earliest;
+      }
+    }
+    final endDate = DateTime.now();
+
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Resmi İş Günlerini Otomatik Doldur'),
+          content: Text(
+            '${DateFormat('dd.MM.yyyy').format(startDate)} ile ${DateFormat('dd.MM.yyyy').format(endDate)} arasındaki tüm resmi iş günlerine (hafta içi günler, resmi tatiller hariç) otomatik olarak 8.5 saatlik "OFİSTEN ÇALIŞMA" kaydı eklensin mi?\n\n• Zaten ofis kaydı olan günlere mükerrer kayıt eklenmez.\n• 16.01.2026 öncesi için ₺600, sonrası için ₺${widget.hourlyRate.toStringAsFixed(0)} uygulanır.',
+            style: const TextStyle(fontSize: 13, height: 1.4),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('İptal', style: TextStyle(color: AppColors.textSecondary)),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Evet, Ekle'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed == true) {
+      final addedCount = await WorkStorage.autoPopulateOfficialWorkdays(
+        startDate: startDate,
+        endDate: endDate,
+        currentHourlyRate: widget.hourlyRate,
+      );
+
+      // Trigger update
+      widget.onHourlyRateChanged(widget.hourlyRate);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              addedCount > 0
+                  ? '$addedCount adet resmi iş gününe 8.5 saat ofis çalışması başarıyla eklendi!'
+                  : 'Tüm resmi iş günlerinde zaten ofis kaydı mevcut, yeni kayıt gerekmedi.',
+            ),
+            backgroundColor: AppColors.successText,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
@@ -411,6 +474,58 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       icon: const Icon(Icons.download_rounded, size: 18),
                       label: const Text('Verileri Çözümle ve İçe Aktar'),
                       style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            // Auto-populate Official Workdays Card
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: AppTheme.cardDecoration(),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: const [
+                      Icon(Icons.calendar_month, color: AppColors.primary, size: 20),
+                      SizedBox(width: 8),
+                      Text(
+                        'Resmi İş Günlerine Ofis Kaydı Ekle',
+                        style: TextStyle(
+                          color: AppColors.textPrimary,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Pazartesi-Cuma arasındaki resmi iş günlerine (resmi tatiller hariç) otomatik 8.5 saatlik "OFİSTEN ÇALIŞMA" kayıtlarını topluca ekler.',
+                    style: TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 12.5,
+                      height: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: _autoPopulateWorkdays,
+                      icon: const Icon(Icons.auto_mode, size: 18),
+                      label: const Text('Tüm Resmi İş Günlerine 8.5 Sa Ofis Kaydı Ekle'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),

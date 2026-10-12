@@ -4,6 +4,7 @@ import '../models/work_model.dart';
 import '../theme.dart';
 import '../storage.dart';
 import '../widgets/add_work_dialog.dart';
+import '../utils/holiday_helper.dart';
 
 class HomeScreen extends StatefulWidget {
   final List<WorkLog> allLogs;
@@ -143,6 +144,41 @@ class _HomeScreenState extends State<HomeScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Kayıt silindi.'),
+            backgroundColor: AppColors.textSecondary,
+          ),
+        );
+      }
+    }
+  }
+
+  // Quick Auto-fill official workdays for current viewed week
+  Future<void> _fillCurrentWeekOfficialDays() async {
+    final weekDays = _getCurrentWeekDays();
+    final startDate = weekDays.first;
+    final endDate = weekDays.last;
+
+    final addedCount = await WorkStorage.autoPopulateOfficialWorkdays(
+      startDate: startDate,
+      endDate: endDate,
+      currentHourlyRate: widget.hourlyRate,
+    );
+
+    if (addedCount > 0) {
+      final updated = await WorkStorage.getWorkLogs();
+      widget.onLogsChanged(updated);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Bu haftanın $addedCount resmi iş gününe 8.5 saatlik ofis kaydı eklendi!'),
+            backgroundColor: AppColors.successText,
+          ),
+        );
+      }
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Bu haftadaki tüm resmi iş günlerinde zaten ofis kaydı bulunmaktadır.'),
             backgroundColor: AppColors.textSecondary,
           ),
         );
@@ -405,7 +441,35 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 12),
+
+            // Quick Auto-fill Current Week Official Workdays Banner
+            InkWell(
+              onTap: _fillCurrentWeekOfficialDays,
+              borderRadius: BorderRadius.circular(16),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+                decoration: AppTheme.cardDecoration(hasShadow: false),
+                child: Row(
+                  children: const [
+                    Icon(Icons.auto_awesome, color: AppColors.primary, size: 18),
+                    SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Bu haftanın resmi iş günlerine otomatik 8.5 sa ofis kaydı ekle',
+                        style: TextStyle(
+                          color: AppColors.primary,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 12.5,
+                        ),
+                      ),
+                    ),
+                    Icon(Icons.chevron_right, color: AppColors.primary, size: 18),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
 
             // 3. Weekly Strip Navigation
             Row(
@@ -578,6 +642,23 @@ class _HomeScreenState extends State<HomeScreen> {
                           fontSize: 12,
                         ),
                       ),
+                      if (HolidayHelper.isOfficialHoliday(_selectedDate))
+                        Container(
+                          margin: const EdgeInsets.only(top: 4),
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.amber.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            '🎉 Resmi Tatil: ${HolidayHelper.getHolidayName(_selectedDate)}',
+                            style: TextStyle(
+                              color: Colors.amber.shade800,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ),
                     ],
                   ),
                 ),

@@ -1,10 +1,12 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'models/work_model.dart';
+import 'utils/holiday_helper.dart';
 
 class WorkStorage {
   static const String _keyHourlyRate = 'hourly_rate';
   static const String _keyWorkLogs = 'work_logs';
+  static const String _keyAutoAddOffice = 'auto_add_office_enabled';
 
   // Get saved hourly rate (defaults to 150.0 if not set)
   static Future<double> getHourlyRate() async {
@@ -16,6 +18,18 @@ class WorkStorage {
   static Future<bool> setHourlyRate(double rate) async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.setDouble(_keyHourlyRate, rate);
+  }
+
+  // Check if auto-add office work is enabled (default: true)
+  static Future<bool> isAutoAddOfficeEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_keyAutoAddOffice) ?? true;
+  }
+
+  // Set auto-add office work enabled
+  static Future<bool> setAutoAddOfficeEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.setBool(_keyAutoAddOffice, enabled);
   }
 
   // Get all saved work logs
@@ -31,7 +45,6 @@ class WorkStorage {
           .map((item) => WorkLog.fromJson(item as Map<String, dynamic>))
           .toList();
     } catch (e) {
-      // Return empty list if there's any corruption or formatting change
       return [];
     }
   }
@@ -47,7 +60,6 @@ class WorkStorage {
   static Future<List<WorkLog>> addWorkLog(WorkLog log) async {
     final logs = await getWorkLogs();
     logs.add(log);
-    // Sort logs by date descending so newer items come first
     logs.sort((a, b) => b.date.compareTo(a.date));
     await saveWorkLogs(logs);
     return logs;
@@ -70,5 +82,50 @@ class WorkStorage {
       await saveWorkLogs(logs);
     }
     return logs;
+  }
+
+  // Auto-populate office logs for official business days in date range
+  static Future<int> autoPopulateOfficialWorkdays({
+    required DateTime startDate,
+    required DateTime endDate,
+    required double currentHourlyRate,
+  }) async {
+    final currentLogs = await getWorkLogs();
+    final List<WorkLog> updatedLogs = List.from(currentLogs);
+    int addedCount = 0;
+
+    DateTime cur = DateTime(startDate.year, startDate.month, startDate.day);
+    final end = DateTime(endDate.year, endDate.month, endDate.day);
+
+    while (!cur.isAfter(end)) {
+      if (HolidayHelper.isOfficialWorkday(cur)) {
+        final bool exists = updatedLogs.any((l) =>
+            l.title == 'OFİSTEN ÇALIŞMA' &&
+            l.date.year == cur.year &&
+            l.date.month == cur.month &&
+            l.date.day == cur.day);
+
+        if (!exists) {
+          // Historical rate logic: prior to 16.01.2026 was 600.0, thereafter is current rate (825.0)
+          final double rate = cur.isBefore(DateTime(2026, 1, 16)) ? 600.0 : currentHourlyRate;
+          updatedLogs.add(WorkLog(
+            id: 'auto_office_${cur.year}_${cur.month}_${cur.day}',
+            title: 'OFİSTEN ÇALIŞMA',
+            date: cur,
+            durationMinutes: 510, // 8.5 hours
+            category: 'Ofis',
+            hourlyRate: rate,
+          ));
+          addedCount++;
+        }
+      }
+      cur = cur.add(const Duration(days: 1));
+    }
+
+    if (addedCount > 0) {
+      updatedLogs.sort((a, b) => b.date.compareTo(a.date));
+      await saveWorkLogs(updatedLogs);
+    }
+    return addedCount;
   }
 }

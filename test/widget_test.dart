@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:remote_work_tracker/models/work_model.dart';
+import 'package:remote_work_tracker/utils/holiday_helper.dart';
 
 void main() {
   group('WorkLog Model Tests', () {
@@ -79,6 +80,39 @@ void main() {
       final earnings = log.durationHours * log.hourlyRate;
 
       expect(earnings, 1275.0); // 8.5 * 150 = 1275
+    });
+  });
+
+  group('HolidayHelper Tests', () {
+    test('Sabit ve dini bayramlar tatil olarak tespit edilmeli', () {
+      // 1 Ocak Yılbaşı
+      expect(HolidayHelper.isOfficialHoliday(DateTime(2026, 1, 1)), isTrue);
+      expect(HolidayHelper.isOfficialWorkday(DateTime(2026, 1, 1)), isFalse);
+
+      // 19 Mayıs Gençlik ve Spor Bayramı
+      expect(HolidayHelper.isOfficialHoliday(DateTime(2026, 5, 19)), isTrue);
+      expect(HolidayHelper.isOfficialWorkday(DateTime(2026, 5, 19)), isFalse);
+
+      // 23 Nisan Çocuk Bayramı
+      expect(HolidayHelper.isOfficialHoliday(DateTime(2026, 4, 23)), isTrue);
+      expect(HolidayHelper.isOfficialWorkday(DateTime(2026, 4, 23)), isFalse);
+    });
+
+    test('Normal hafta içi günler resmi iş günü olarak tespit edilmeli', () {
+      // 17 Temmuz 2026 Cuma (Tatil olmayan normal hafta içi iş günü)
+      final friday = DateTime(2026, 7, 17);
+      expect(HolidayHelper.isOfficialHoliday(friday), isFalse);
+      expect(HolidayHelper.isOfficialWorkday(friday), isTrue);
+    });
+
+    test('Hafta sonları iş günü olmamalı', () {
+      // 18 Temmuz 2026 Cumartesi
+      final saturday = DateTime(2026, 7, 18);
+      expect(HolidayHelper.isOfficialWorkday(saturday), isFalse);
+
+      // 19 Temmuz 2026 Pazar
+      final sunday = DateTime(2026, 7, 19);
+      expect(HolidayHelper.isOfficialWorkday(sunday), isFalse);
     });
   });
 }

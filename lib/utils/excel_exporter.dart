@@ -2,6 +2,7 @@ import 'package:excel/excel.dart';
 import 'package:intl/intl.dart';
 import '../models/work_model.dart';
 import 'file_saver.dart';
+import 'holiday_helper.dart';
 
 class ConsolidatedRow {
   final DateTime date;
@@ -23,15 +24,16 @@ class ExcelExporter {
     required DateTime startDate,
     required DateTime endDate,
     required double hourlyRate,
+    bool autoIncludeOfficeWork = true,
   }) async {
     // Check if the start date is a Friday
     final bool isStartFriday = startDate.weekday == DateTime.friday;
+    final startOnly = DateTime(startDate.year, startDate.month, startDate.day);
+    final endOnly = DateTime(endDate.year, endDate.month, endDate.day);
 
-    // 1. Filter logs in date range (inclusive)
-    final filteredLogs = logs.where((log) {
+    // 1. Filter existing logs in date range (inclusive)
+    final List<WorkLog> filteredLogs = logs.where((log) {
       final logDateOnly = DateTime(log.date.year, log.date.month, log.date.day);
-      final startOnly = DateTime(startDate.year, startDate.month, startDate.day);
-      final endOnly = DateTime(endDate.year, endDate.month, endDate.day);
       
       final bool inRange = (logDateOnly.isAtSameMomentAs(startOnly) || logDateOnly.isAfter(startOnly)) &&
           (logDateOnly.isAtSameMomentAs(endOnly) || logDateOnly.isBefore(endOnly));
@@ -49,6 +51,39 @@ class ExcelExporter {
 
       return true;
     }).toList();
+
+    // 2. Automatically include 8.5 hours office work for official workdays in date range
+    if (autoIncludeOfficeWork) {
+      DateTime curDay = startOnly;
+      while (!curDay.isAfter(endOnly)) {
+        // If it's a Friday start date, don't auto-add office work on that start Friday
+        final bool isStartDayFriday = isStartFriday &&
+            curDay.year == startOnly.year &&
+            curDay.month == startOnly.month &&
+            curDay.day == startOnly.day;
+
+        if (!isStartDayFriday && HolidayHelper.isOfficialWorkday(curDay)) {
+          final bool alreadyHasOfficeLog = filteredLogs.any((log) =>
+              log.title == 'OFİSTEN ÇALIŞMA' &&
+              log.date.year == curDay.year &&
+              log.date.month == curDay.month &&
+              log.date.day == curDay.day);
+
+          if (!alreadyHasOfficeLog) {
+            final double rate = curDay.isBefore(DateTime(2026, 1, 16)) ? 600.0 : hourlyRate;
+            filteredLogs.add(WorkLog(
+              id: 'auto_office_${curDay.year}_${curDay.month}_${curDay.day}',
+              title: 'OFİSTEN ÇALIŞMA',
+              date: curDay,
+              durationMinutes: 510, // 8.5 hours
+              category: 'Ofis',
+              hourlyRate: rate,
+            ));
+          }
+        }
+        curDay = curDay.add(const Duration(days: 1));
+      }
+    }
 
     // Group logs by date
     final Map<String, List<WorkLog>> logsByDate = {};
