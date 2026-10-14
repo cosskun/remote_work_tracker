@@ -48,5 +48,5 @@ jobs:
           appId: ${{ secrets.FIREBASE_APP_ID }}
           serviceCredentialsFileContent: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           file: build/app/outputs/flutter-apk/app-release.apk
-          testers: furkanc28@gmail.com, rumeysa1166metin@gmail.com
+          testers: furkanc28@gmail.com, rumeysa1166metin@gmail.com, mtn.rumeysa@gmail.com
           releaseNotes: "Remote Work Tracker yeni surum (GitHub Actions)"
